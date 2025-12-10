@@ -13,8 +13,8 @@ const selectedMethod = ref('EFECTIVO');
 
 const methods = [
   { value: 'EFECTIVO', label: 'Efectivo' },
-  { value: 'YAPE', label: 'Yape / Plin' },
-  { value: 'TARJETA', label: 'Tarjeta' }
+  { value: 'YAPE', label: 'Yape / Plin' }
+  // { value: 'TARJETA', label: 'Tarjeta' } // Temporarily removed
 ];
 
 const confirm = () => {
