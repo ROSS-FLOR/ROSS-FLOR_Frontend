@@ -1,0 +1,85 @@
+/* base.css */
+:root {
+  /* Soft Pastel Palette - User Request */
+  --color-background: #ffffff;
+  /* White */
+  --color-surface: #ffffff;
+  /* White */
+  --color-surface-hover: #ffda9e;
+  /* Pastel Orange (Hover) */
+
+  --color-primary: #fabfb7;
+  /* Pastel Pink */
+  --color-primary-hover: #e59f96;
+  /* Darker Pink */
+  --color-primary-text: #5d3a3a;
+  /* Dark Brown for contrast on pink */
+
+  --color-text: #4a4a4a;
+  /* Dark Gray */
+  --color-text-muted: #787878;
+  /* Medium Gray */
+  --color-border: #000000;
+  /* Pastel Orange (Border) */
+
+  --color-danger: #ef4444;
+  /* Red 500 */
+  --color-success: #10b981;
+  /* Emerald 500 */
+
+  --font-family-base: 'Inter', system-ui, -apple-system, sans-serif;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  position: relative;
+  font-weight: normal;
+}
+
+body {
+  min-height: 100vh;
+  color: var(--color-text);
+  background: var(--color-background);
+  font-family: var(--font-family-base);
+  line-height: 1.6;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  cursor: pointer;
+  font-family: inherit;
+  border: none;
+  background: none;
+}
+
+input,
+select {
+  font-family: inherit;
+  color: inherit;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 600;
+  line-height: 1.25;
+  margin-bottom: 0.5rem;
+}
