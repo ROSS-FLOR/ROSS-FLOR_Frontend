@@ -28,6 +28,7 @@ watch(() => props.productToEdit, (newVal) => {
   } else {
     form.value = {
       nombre: '',
+      categoria: '',
       stockActual: 0,
       precioUnitario: 0
     };
@@ -45,6 +46,7 @@ const handleSubmit = async () => {
     if (!isEditing.value) {
       form.value = {
         nombre: '',
+        categoria: '',
         stockActual: 0,
         precioUnitario: 0
       };
@@ -72,6 +74,22 @@ const handleSubmit = async () => {
         required 
         placeholder="Ej. Libro de Vue.js"
       />
+
+      <div class="form-group">
+        <label class="label">Categoría</label>
+        <select v-model="form.categoria" class="select-input" required>
+          <option value="" disabled>Seleccione una categoría</option>
+          <option value="Librería y Escolar">Librería y Escolar</option>
+          <option value="Oficina y Papelería">Oficina y Papelería</option>
+          <option value="Arte y Diseño">Arte y Diseño</option>
+          <option value="Regalos y Detalles">Regalos y Detalles</option>
+          <option value="Juguetería">Juguetería</option>
+          <option value="Piñatería y Fiestas">Piñatería y Fiestas</option>
+          <option value="Bazar y Hogar">Bazar y Hogar</option>
+          <option value="Tecnología">Tecnología</option>
+          <option value="Otros">Otros</option>
+        </select>
+      </div>
       
       <BaseInput 
         label="Stock Actual" 
@@ -106,5 +124,36 @@ const handleSubmit = async () => {
   justify-content: flex-end;
   gap: 1rem;
   margin-top: 1.5rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.select-input {
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-background);
+  color: var(--color-text);
+  font-size: 1rem;
+  transition: all 0.2s;
+  width: 100%;
+  cursor: pointer;
+}
+
+.select-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
 }
 </style>

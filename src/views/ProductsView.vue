@@ -68,6 +68,7 @@ const getStockClass = (stock) => {
         <thead>
           <tr>
             <th>Nombre</th>
+            <th>Categoría</th>
             <th>Stock</th>
             <th>Precio Unit.</th>
             <th>Acciones</th>
@@ -75,14 +76,17 @@ const getStockClass = (stock) => {
         </thead>
         <tbody>
           <tr v-if="productsStore.loading">
-            <td colspan="4" class="text-center">Cargando...</td>
+            <td colspan="5" class="text-center">Cargando...</td>
           </tr>
           <tr v-else-if="productsStore.products.length === 0">
-             <td colspan="4" class="text-center">No se encontraron productos.</td>
+             <td colspan="5" class="text-center">No se encontraron productos.</td>
           </tr>
           <tr v-else v-for="product in productsStore.products" :key="product.id">
             <td>
               {{ product.nombre }}
+            </td>
+            <td>
+              {{ product.categoria || '-' }}
             </td>
             <td>
               <span class="stock-badge" :class="getStockClass(product.stockActual)">
