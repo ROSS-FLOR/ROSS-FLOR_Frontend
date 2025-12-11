@@ -2,23 +2,25 @@
 import { ref, watch, computed } from 'vue';
 import { useSalesStore } from '@/stores/sales';
 import BaseButton from '@/components/BaseButton.vue';
+import ReceiptModal from '@/components/ReceiptModal.vue';
 
 const props = defineProps({
   show: Boolean,
-  saleId: Number
+  sale: Object
 });
 
 const emit = defineEmits(['close']);
 const salesStore = useSalesStore();
 const details = ref([]);
 const loading = ref(false);
+const showReceipt = ref(false);
 
 watch(() => props.show, async (newVal) => {
-    if (newVal && props.saleId) {
+    if (newVal && props.sale) {
         loading.value = true;
         details.value = [];
         try {
-            details.value = await salesStore.fetchSaleDetails(props.saleId);
+            details.value = await salesStore.fetchSaleDetails(props.sale.id);
         } catch (error) {
             console.error(error);
             alert('Error al cargar detalles');
@@ -31,13 +33,45 @@ watch(() => props.show, async (newVal) => {
 const totalSum = computed(() => {
     return details.value.reduce((acc, item) => acc + (item.subtotal || 0), 0);
 });
+
+const fullSaleForReceipt = computed(() => {
+    // If we have the specific fetched sale (fullSale), use it as it likely has QR data
+    if (fullSale.value) {
+        return {
+            ...fullSale.value,
+            detalles: details.value
+        };
+    }
+    // Fallback to props
+    if (!props.sale) return null;
+    return {
+        ...props.sale,
+        detalles: details.value
+    };
+});
+
+const fullSale = ref(null);
+
+watch(() => showReceipt.value, async (newVal) => {
+    if (newVal && props.sale) {
+        // Try to fetch full sale to get QR code if missing
+        if (!props.sale.cadenaQR && !props.sale.Cadena_QR) {
+             try {
+                 const fetched = await salesStore.fetchSaleById(props.sale.id);
+                 fullSale.value = fetched;
+             } catch (e) {
+                 console.error("Could not fetch full sale for QR", e);
+             }
+        }
+    }
+});
 </script>
 
 <template>
   <div v-if="show" class="modal-overlay">
     <div class="modal-content">
       <div class="modal-header">
-          <h2>Detalles de Venta #{{ saleId }}</h2>
+          <h2>Detalles de Venta #{{ sale?.id }}</h2>
           <button class="close-btn" @click="$emit('close')">×</button>
       </div>
 
@@ -68,10 +102,19 @@ const totalSum = computed(() => {
       </div>
 
       <div class="modal-footer">
+        <BaseButton variant="primary" @click="showReceipt = true" :disabled="loading">
+            <i class="fas fa-print"></i> Ver Boleta
+        </BaseButton>
         <BaseButton variant="secondary" @click="$emit('close')">Cerrar</BaseButton>
       </div>
     </div>
   </div>
+
+  <ReceiptModal 
+    :show="showReceipt" 
+    :sale="fullSaleForReceipt" 
+    @close="showReceipt = false" 
+  />
 </template>
 
 <style scoped>
@@ -148,6 +191,7 @@ const totalSum = computed(() => {
     border-top: 1px solid var(--color-border);
     display: flex;
     justify-content: flex-end;
+    gap: 1rem;
 }
 
 .total-row {

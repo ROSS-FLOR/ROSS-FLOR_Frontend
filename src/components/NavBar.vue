@@ -21,7 +21,7 @@ const notificationsViewed = ref(false);
 const notificationContainer = ref(null);
 
 const lowStockItems = computed(() => {
-  // Filter products with stock < 10 (Red)
+  // Filtrar productos con stock < 10 (Rojo)
   return productsStore.products.filter(p => p.stockActual < 10);
 });
 
@@ -29,7 +29,7 @@ const hasNotifications = computed(() => {
     return lowStockItems.value.length > 0 && !notificationsViewed.value;
 });
 
-// Watch for new low stock items to reset the "viewed" status
+// Observar nuevos items con stock bajo para resetear el estado de "visto"
 watch(() => lowStockItems.value.length, (newCount, oldCount) => {
     if (newCount > (oldCount || 0)) {
         notificationsViewed.value = false;
@@ -103,14 +103,21 @@ onUnmounted(() => {
 }
 
 .navbar-container {
-  max-width: 1024px; /* Match App.vue */
+  max-width: 1500px; /* Igualar a App.vue */
   margin: 0 auto;
   padding: 1rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  justify-content: space-between;
   width: 100%;
 }
+
+@media (min-width: 2000px) and (min-height: 1600px) {
+    .navbar-container { max-width: 95vw; } /* Ancho completo en pantallas grandes */
+}
+/* Asegurar que el NavBar siga las mismas reglas para puntos de interrupción más grandes */
+@media (min-width: 3000px) { .navbar-container { max-width: 95vw; } }
 
 .logo {
   display: flex;
@@ -221,7 +228,7 @@ onUnmounted(() => {
     padding: 0.5rem 0;
     z-index: 1000;
     margin-top: 0.5rem;
-    max-height: 200px; /* Approx 4 items */
+    max-height: 200px; /* Aprox 4 items */
     overflow-y: auto;
 }
 

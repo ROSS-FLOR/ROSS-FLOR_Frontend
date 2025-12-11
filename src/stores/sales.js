@@ -34,13 +34,14 @@ export const useSalesStore = defineStore('sales', {
             }
         },
         async downloadReport(startDate, endDate) {
-            if (!startDate || !endDate) {
-                alert('Seleccione un rango de fechas');
-                return;
-            }
             try {
+                const params = {};
+                // Ensure seconds are included for strict backend parsing (YYYY-MM-DDTHH:mm:00)
+                if (startDate) params.fechaInicio = startDate.length === 16 ? startDate + ':00' : startDate;
+                if (endDate) params.fechaFin = endDate.length === 16 ? endDate + ':00' : endDate;
+
                 const response = await api.get('/ventas/reporte-pdf', {
-                    params: { fechaInicio: startDate, fechaFin: endDate },
+                    params,
                     responseType: 'blob'
                 });
 
@@ -54,7 +55,32 @@ export const useSalesStore = defineStore('sales', {
                 link.remove();
             } catch (err) {
                 console.error('Error downloading PDF:', err);
-                alert('Error al descargar el reporte');
+                alert('Error al descargar el reporte PDF');
+            }
+        },
+        async downloadExcel(startDate, endDate) {
+            try {
+                const params = {};
+                // Ensure seconds are included for strict backend parsing (YYYY-MM-DDTHH:mm:00)
+                if (startDate) params.fechaInicio = startDate.length === 16 ? startDate + ':00' : startDate;
+                if (endDate) params.fechaFin = endDate.length === 16 ? endDate + ':00' : endDate;
+
+                const response = await api.get('/ventas/reporte-excel', {
+                    params,
+                    responseType: 'blob'
+                });
+
+                // Create download link
+                const url = window.URL.createObjectURL(new Blob([response.data]));
+                const link = document.createElement('a');
+                link.href = url;
+                link.setAttribute('download', 'reporte_ventas.xlsx');
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+            } catch (err) {
+                console.error('Error downloading Excel:', err);
+                alert('Error al descargar el reporte Excel');
             }
         },
         async createManualSale(saleData) {
@@ -95,6 +121,29 @@ export const useSalesStore = defineStore('sales', {
                 return response.data;
             } catch (err) {
                 console.error('Error fetching details:', err);
+                throw err;
+            }
+        },
+        async fetchSalesForReport(filters = {}) {
+            try {
+                const params = {
+                    page: 1,
+                    size: 10000, // Fetch large number for report
+                    ...filters
+                };
+                const response = await api.get('/ventas', { params });
+                return response.data.content || [];
+            } catch (err) {
+                console.error('Error fetching sales for report:', err);
+                throw err;
+            }
+        },
+        async fetchSaleById(id) {
+            try {
+                const response = await api.get(`/ventas/${id}`);
+                return response.data;
+            } catch (err) {
+                console.error('Error fetching sale by id:', err);
                 throw err;
             }
         }

@@ -12,14 +12,15 @@ export const useProductsStore = defineStore('products', {
         pageSize: 10
     }),
     actions: {
-        async fetchProducts(page = 0, search = '') {
+        async fetchProducts(page = 0, search = '', category = '') {
             this.loading = true;
             this.error = null;
             try {
                 const params = {
                     page: page,
                     size: this.pageSize,
-                    busqueda: search || undefined
+                    busqueda: search || undefined,
+                    categoria: category || undefined
                 };
                 const response = await api.get('/productos', { params });
                 // Response format: { content: [], totalPages: 1, ... }

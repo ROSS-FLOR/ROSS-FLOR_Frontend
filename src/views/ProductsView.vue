@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useProductsStore } from '@/stores/products';
 import BaseInput from '@/components/BaseInput.vue';
 import BaseButton from '@/components/BaseButton.vue';
@@ -7,15 +7,43 @@ import ProductModal from '@/components/ProductModal.vue';
 
 const productsStore = useProductsStore();
 const search = ref('');
+const selectedCategory = ref('');
 const showProductModal = ref(false);
 const selectedProduct = ref(null);
 
-// Debounce logic could be added here, currently relies on enter or simple reactive watch if implemented
+const normalizeStr = (str) => {
+    return (str || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+};
+
+const filteredProducts = computed(() => {
+    // Si el backend devuelve datos pero queremos asegurar un filtrado estricto en el lado de la vista
+    // o si el backend devuelve resultados mixtos.
+    if (selectedCategory.value) {
+        const normalizedSelected = normalizeStr(selectedCategory.value);
+        return productsStore.products.filter(p => {
+             return normalizeStr(p.categoria) === normalizedSelected;
+        });
+    }
+    return productsStore.products;
+});
+
+const categories = [
+  'Librería y Escolar',
+  'Oficina y Papelería',
+  'Arte y Diseño',
+  'Regalos y Detalles',
+  'Juguetería',
+  'Piñatería y Fiestas',
+  'Bazar y Hogar',
+  'Otros'
+];
+
+// La lógica de Debounce podría añadirse aquí, actualmente depende de enter o un watch reactivo simple si se implementa
 let debounceTimeout;
-watch(search, (newVal) => {
+watch([search, selectedCategory], ([newSearch, newCategory]) => {
   clearTimeout(debounceTimeout);
   debounceTimeout = setTimeout(() => {
-    productsStore.fetchProducts(0, newVal);
+    productsStore.fetchProducts(0, newSearch, newCategory);
   }, 500);
 });
 
@@ -29,16 +57,15 @@ const openCreateModal = () => {
 };
 
 const openEditModal = (product) => {
-  selectedProduct.value = { ...product }; // Copy to avoid mutation
+  selectedProduct.value = { ...product }; // Copiar para evitar mutación
   showProductModal.value = true;
 };
 
 const changePage = (page) => {
   if (page >= 0 && page < productsStore.totalPages) {
-    productsStore.fetchProducts(page, search.value);
+    productsStore.fetchProducts(page, search.value, selectedCategory.value);
   }
 };
-
 const getStockClass = (stock) => {
   if (stock < 10) return 'stock-red';
   if (stock <= 25) return 'stock-yellow';
@@ -56,11 +83,20 @@ const getStockClass = (stock) => {
     </div>
 
     <div class="controls">
-      <BaseInput 
-        v-model="search" 
-        placeholder="Buscar por nombre..." 
-        class="search-input"
-      />
+      <div class="search-box">
+        <BaseInput 
+            v-model="search" 
+            placeholder="Buscar por nombre..." 
+            class="search-input"
+        />
+      </div>
+      
+      <div class="filter-box">
+          <select v-model="selectedCategory" class="category-select">
+              <option value="">Todas las Categorías</option>
+              <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
+          </select>
+      </div>
     </div>
 
     <div class="table-container">
@@ -78,10 +114,10 @@ const getStockClass = (stock) => {
           <tr v-if="productsStore.loading">
             <td colspan="5" class="text-center">Cargando...</td>
           </tr>
-          <tr v-else-if="productsStore.products.length === 0">
+          <tr v-else-if="filteredProducts.length === 0">
              <td colspan="5" class="text-center">No se encontraron productos.</td>
           </tr>
-          <tr v-else v-for="product in productsStore.products" :key="product.id">
+          <tr v-else v-for="product in filteredProducts" :key="product.id">
             <td>
               {{ product.nombre }}
             </td>
@@ -135,8 +171,41 @@ const getStockClass = (stock) => {
   align-items: center;
 }
 
+.controls {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.search-box {
+    flex: 1;
+    min-width: 250px;
+}
+
 .search-input {
-  max-width: 400px;
+  width: 100%;
+  margin-bottom: 0 !important;
+}
+
+.filter-box {
+    min-width: 200px;
+}
+
+.category-select {
+    width: 100%;
+    padding: 0.75rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text);
+    font-size: 1rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.category-select:focus {
+    border-color: var(--color-primary);
 }
 
 .table-container {

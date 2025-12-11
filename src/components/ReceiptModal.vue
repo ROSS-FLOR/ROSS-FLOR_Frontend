@@ -1,6 +1,7 @@
 <script setup>
 import BaseButton from '@/components/BaseButton.vue';
 import { ref } from 'vue';
+import QrcodeVue from 'qrcode.vue';
 
 const props = defineProps({
   show: Boolean,
@@ -128,6 +129,16 @@ const numberToText = (amount) => {
           <div class="receipt-extras">
               <p><strong>SON:</strong> {{ numberToText(sale?.totalFinal) }} SOLES</p>
               <p><strong>FORMA DE PAGO:</strong> {{ sale?.modoPago }}</p>
+          </div>
+
+          <!-- QR Code Section -->
+          <div class="qr-section" v-if="sale?.cadenaQR || sale?.Cadena_QR">
+              <div class="qr-wrapper">
+                  <QrcodeVue :value="sale.cadenaQR || sale.Cadena_QR" :size="100" level="M" render-as="svg" />
+              </div>
+              <div class="qr-summary" v-if="sale?.valorResumen || sale?.Valor_Resumen">
+                  {{ sale.valorResumen || sale.Valor_Resumen }}
+              </div>
           </div>
       </div>
 
@@ -264,6 +275,26 @@ const numberToText = (amount) => {
     border-top: 1px dashed #000;
     padding-top: 0.5rem;
     font-size: 11px;
+}
+
+.qr-section {
+    margin-top: 15px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+}
+
+.qr-wrapper {
+    display: flex;
+    justify-content: center;
+}
+
+.qr-summary {
+    font-size: 10px;
+    text-align: center;
+    color: black;
+    margin-top: 2px;
 }
 
 .actions {

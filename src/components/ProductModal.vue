@@ -86,7 +86,6 @@ const handleSubmit = async () => {
           <option value="Juguetería">Juguetería</option>
           <option value="Piñatería y Fiestas">Piñatería y Fiestas</option>
           <option value="Bazar y Hogar">Bazar y Hogar</option>
-          <option value="Tecnología">Tecnología</option>
           <option value="Otros">Otros</option>
         </select>
       </div>

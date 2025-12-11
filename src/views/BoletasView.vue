@@ -1,40 +1,74 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useProductsStore } from '@/stores/products';
 import { useSalesStore } from '@/stores/sales';
-import BaseInput from '@/components/BaseInput.vue';
 import BaseButton from '@/components/BaseButton.vue';
 import PaymentModal from '@/components/PaymentModal.vue';
 import ReceiptModal from '@/components/ReceiptModal.vue';
+import BaseToast from '@/components/BaseToast.vue';
 
 const productsStore = useProductsStore();
 const salesStore = useSalesStore();
 
-const searchQuery = ref('');
 const cart = ref([]);
 const showPaymentModal = ref(false);
 const showReceiptModal = ref(false);
 const lastSale = ref(null);
 
-// Initialize products
+const toasts = ref([]);
+
+const addToast = (message, type = 'info', duration = 3000) => {
+    const id = Date.now();
+    toasts.value.push({ id, message, type, duration });
+};
+
+const removeToast = (id) => {
+    toasts.value = toasts.value.filter(t => t.id !== id);
+};
+
+const selectedCategory = ref(null);
+
+const categories = [
+  'Librería y Escolar',
+  'Oficina y Papelería',
+  'Arte y Diseño',
+  'Regalos y Detalles',
+  'Juguetería',
+  'Piñatería y Fiestas',
+  'Bazar y Hogar',
+  'Otros'
+];
+
+// Inicializar productos - obtener todos al inicio
 onMounted(() => {
-    productsStore.fetchProducts();
+    // Queremos filtrar productos localmente para mayor velocidad en esta vista
+    // Asumiendo que la paginación del backend es lo suficientemente grande o la lógica cambia para obtener por categoría
+    // Por ahora, obtenemos por defecto y confiamos en el parámetro de categoría si es necesario, 
+    // PERO el requerimiento implica una navegación rápida "estilo app". 
+    // Si usamos filtrado en backend:
+    productsStore.fetchProducts(0, '', ''); 
 });
 
-// Search & Filter Logic
-// We want to filter the LOCALLY displayed products based on the search query
-// IF the store already has them, OR fetch from backend.
-// For a smooth POS experience, usually we filter the loaded list.
-// Let's rely on the store's "fetchProducts" for the search to support server-side search.
-let debounceTimeout;
-watch(searchQuery, (newVal) => {
-    clearTimeout(debounceTimeout);
-    debounceTimeout = setTimeout(() => {
-        productsStore.fetchProducts(0, newVal);
-    }, 300);
+const displayedProducts = computed(() => {
+    if (!selectedCategory.value) return [];
+    // Filtrar productos locales si los tenemos todos, O obtener del backend si está paginado estrictamente.
+    // Dado que el paso anterior añadió filtrado en backend:
+    return productsStore.products; // La tienda ya tiene la lista filtrada
 });
 
-// Cart Logic Helper
+const selectCategory = (category) => {
+    selectedCategory.value = category;
+    // Obtener productos para esta categoría
+    // Asumimos que el backend maneja la paginación, solicitamos la página 0
+    productsStore.fetchProducts(0, '', category);
+};
+
+const goBackToCategories = () => {
+    selectedCategory.value = null;
+    productsStore.fetchProducts(0, '', ''); // Opcional: limpiar filtro o simplemente no mostrar
+};
+
+// Ayudante de Lógica del Carrito
 const getCartItem = (productId) => {
     return cart.value.find(item => item.id === productId);
 };
@@ -50,8 +84,6 @@ const increaseQty = (product) => {
         if (existingItem.cantidad < product.stockActual) {
             existingItem.cantidad++;
             existingItem.subtotal = existingItem.cantidad * existingItem.precioUnitario;
-        } else {
-            // Optional: Toast warning for stock limit
         }
     } else {
         if (product.stockActual > 0) {
@@ -71,7 +103,7 @@ const decreaseQty = (product) => {
             existingItem.cantidad--;
             existingItem.subtotal = existingItem.cantidad * existingItem.precioUnitario;
         } else {
-            // Remove from cart
+            // Eliminar del carrito
             const index = cart.value.indexOf(existingItem);
             cart.value.splice(index, 1);
         }
@@ -88,14 +120,31 @@ const cartTotal = computed(() => {
     return cart.value.reduce((total, item) => total + item.subtotal, 0);
 });
 
-// Pagination Logic
+// Lógica de Paginación
 const changePage = (page) => {
     if (page >= 0 && page < productsStore.totalPages) {
-        productsStore.fetchProducts(page, searchQuery.value);
+        productsStore.fetchProducts(page, '', selectedCategory.value);
     }
 };
 
+const normalizeStr = (str) => {
+    return (str || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+};
+
+const filteredProducts = computed(() => {
+    if (selectedCategory.value) {
+        const normalizedSelected = normalizeStr(selectedCategory.value);
+        return productsStore.products.filter(p => {
+             return normalizeStr(p.categoria) === normalizedSelected;
+        });
+    }
+    return productsStore.products;
+});
+
 const handleCheckout = async (paymentMethod) => {
+    // Mantener registro de items para verificar stock después
+    const itemsToCheck = cart.value.map(item => item.id);
+
     const saleRequest = {
         modoPago: paymentMethod,
         items: cart.value.map(item => ({
@@ -110,94 +159,147 @@ const handleCheckout = async (paymentMethod) => {
         showReceiptModal.value = true;
         cart.value = [];
         showPaymentModal.value = false;
-        // Refresh products to update stock
-        productsStore.fetchProducts(); 
+        
+        // Actualizar productos y luego verificar stock bajo
+        if (selectedCategory.value) {
+            await productsStore.fetchProducts(productsStore.currentPage, '', selectedCategory.value); 
+        } else {
+            await productsStore.fetchProducts();
+        }
+
+        // Verificar stock bajo en items comprados
+        itemsToCheck.forEach(itemId => {
+            const product = productsStore.products.find(p => p.id === itemId);
+            if (product && product.stockActual < 10) {
+                // Estilo "Error" rojo, duración de 4 segundos
+                addToast(`Reponer Stock de "${product.nombre}" (${product.stockActual})`, 'error', 4000);
+            }
+        });
+
     } catch (error) {
         alert('Error al emitir boleta: ' + (error.response?.data?.message || error.message));
     }
+};
+
+import imgLibreria from '@/assets/categories/cat_libreria.png';
+import imgOficina from '@/assets/categories/cat_oficina.png';
+import imgArte from '@/assets/categories/cat_arte.png';
+import imgRegalos from '@/assets/categories/cat_regalos.png';
+import imgJugueteria from '@/assets/categories/cat_jugueteria.png';
+import imgPinateria from '@/assets/categories/cat_pinateria.png';
+import imgBazar from '@/assets/categories/cat_bazar.png';
+import imgOtros from '@/assets/categories/cat_otros.png';
+
+const categoryImages = {
+  'Librería y Escolar': imgLibreria,
+  'Oficina y Papelería': imgOficina,
+  'Arte y Diseño': imgArte,
+  'Regalos y Detalles': imgRegalos,
+  'Juguetería': imgJugueteria,
+  'Piñatería y Fiestas': imgPinateria,
+  'Bazar y Hogar': imgBazar,
+  'Otros': imgOtros
+};
+
+const getCategoryIcon = (cat) => {
+    return categoryImages[cat];
 };
 </script>
 
 <template>
   <div class="pos-wrapper">
-    <!-- Left Column: Catalog -->
+    <!-- Left Column: Navigation & Grid -->
     <div class="catalog-section">
-        <div class="search-header">
-            <div class="search-bar">
-                <span class="search-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                </span>
-                <input 
-                    v-model="searchQuery" 
-                    type="text" 
-                    placeholder="Buscar productos por nombre o código..." 
-                    class="clean-search-input"
-                >
+        
+        <!-- Header / Breadcrumb -->
+        <div class="catalog-header" v-if="selectedCategory">
+            <button class="back-btn" @click="goBackToCategories">
+                <i class="fas fa-arrow-left"></i> Volver
+            </button>
+            <h2>{{ selectedCategory }}</h2>
+        </div>
+        <div class="catalog-header" v-else>
+            <h2>Seleccione una Categoría</h2>
+            <small>Elija una categoría para ver sus productos</small>
+        </div>
+
+        <!-- CATEGORY GRID -->
+        <div class="grid-container categories-grid" v-if="!selectedCategory">
+            <div 
+                v-for="cat in categories" 
+                :key="cat" 
+                class="category-card"
+                @click="selectCategory(cat)"
+            >
+                <div class="cat-icon-wrapper">
+                    <img :src="getCategoryIcon(cat)" :alt="cat" class="cat-img" />
+                </div>
+                <div class="cat-name">{{ cat }}</div>
             </div>
         </div>
 
-        <div class="products-grid">
-            <div v-if="productsStore.loading" class="loading-state">Cargando productos...</div>
-            <div v-else-if="productsStore.products.length === 0" class="empty-state">No se encontraron productos</div>
-            
-            <div v-else v-for="product in productsStore.products" :key="product.id" class="product-card">
-                <div class="product-info">
-                    <h3 class="product-name">{{ product.nombre }}</h3>
-                    <span class="product-code">Stock: {{ product.stockActual }}</span>
-                </div>
-                <div class="product-pricing">
-                    <div class="price">S/. {{ product.precioUnitario.toFixed(2) }}</div>
-                    
-                    <div class="qty-stepper">
-                        <button 
-                            class="step-btn" 
-                            @click="decreaseQty(product)"
-                            :disabled="getProductQty(product.id) === 0"
-                        >−</button>
-                        <span class="qty-display">{{ getProductQty(product.id) }}</span>
-                        <button 
-                            class="step-btn" 
-                            @click="increaseQty(product)"
-                            :disabled="getProductQty(product.id) >= product.stockActual"
-                        >+</button>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Pagination Controls -->
-            <div class="pagination-controls" v-if="productsStore.totalPages > 1">
-                <button 
+        <!-- PRODUCT GRID -->
+        <div class="grid-container products-grid" v-else>
+             <div v-if="productsStore.loading" class="loading-state">Cargando productos...</div>
+             <div v-else-if="filteredProducts.length === 0" class="empty-state">
+                No hay productos en esta categoría.
+             </div>
+
+             <div v-else v-for="product in filteredProducts" :key="product.id" class="product-card" :class="{ 'card-out-stock': product.stockActual === 0 }">
+                 <div class="agotado-overlay" v-if="product.stockActual === 0">AGOTADO</div>
+                 <div class="product-main">
+                     <div class="prod-name">{{ product.nombre }}</div>
+                     <div class="prod-price">S/. {{ product.precioUnitario.toFixed(2) }}</div>
+                     <div class="prod-stock" :class="{'out-stock': product.stockActual === 0}">
+                        Stock: {{ product.stockActual }}
+                     </div>
+                 </div>
+                 
+                 <div class="product-actions">
+                     <button 
+                        class="action-btn minus" 
+                        @click.stop="decreaseQty(product)"
+                        :disabled="getProductQty(product.id) === 0"
+                     >−</button>
+                     <span class="qty-label">{{ getProductQty(product.id) }}</span>
+                     <button 
+                        class="action-btn plus" 
+                        @click.stop="increaseQty(product)"
+                        :disabled="getProductQty(product.id) >= product.stockActual"
+                     >+</button>
+                 </div>
+             </div>
+        </div>
+
+        <!-- Pagination (Only for products) -->
+        <div class="pagination-controls" v-if="selectedCategory && productsStore.totalPages > 1">
+             <button 
                     class="page-btn"
                     :disabled="productsStore.currentPage === 0"
                     @click="changePage(productsStore.currentPage - 1)"
-                >
-                    ◄
-                </button>
-                <span class="page-info">{{ productsStore.currentPage + 1 }} / {{ productsStore.totalPages }}</span>
-                <button 
+                >◄</button>
+             <span class="page-info">{{ productsStore.currentPage + 1 }} / {{ productsStore.totalPages }}</span>
+             <button 
                     class="page-btn"
                     :disabled="productsStore.currentPage >= productsStore.totalPages - 1"
                     @click="changePage(productsStore.currentPage + 1)"
-                >
-                    ►
-                </button>
-            </div>
+                >►</button>
         </div>
+
     </div>
 
-    <!-- Right Column: Cart -->
+    <!-- Right Column: Cart (Unchanged logic, minor style tweaks) -->
     <div class="cart-section">
         <div class="cart-header">
             <h2>Resumen <span class="badge" v-if="cart.length > 0">#{{ cart.length }}</span></h2>
             <button v-if="cart.length > 0" @click="clearCart" class="clear-btn" title="Vaciar carrito">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                 <i class="fas fa-trash-alt"></i>
             </button>
         </div>
 
         <div class="cart-items">
             <div v-if="cart.length === 0" class="empty-cart-msg">
                 <p>Carrito vacío</p>
-                <small>Agregue productos del panel izquierdo</small>
             </div>
             <div v-else v-for="item in cart" :key="item.id" class="cart-item">
                 <div class="cart-item-info">
@@ -240,6 +342,18 @@ const handleCheckout = async (paymentMethod) => {
         :sale="lastSale"
         @close="showReceiptModal = false"
     />
+
+    <!-- Toasts Container -->
+    <TransitionGroup name="toast" tag="div" class="toast-container">
+        <BaseToast 
+            v-for="toast in toasts" 
+            :key="toast.id"
+            :message="toast.message"
+            :type="toast.type"
+            :duration="toast.duration"
+            @close="removeToast(toast.id)"
+        />
+    </TransitionGroup>
   </div>
 </template>
 
@@ -247,159 +361,184 @@ const handleCheckout = async (paymentMethod) => {
 .pos-wrapper {
     display: grid;
     grid-template-columns: 1fr 350px;
-    gap: 1rem;
-    height: calc(100vh - 80px); /* Tweak to fit exactly without page scroll */
-    overflow: hidden;
+    gap: 1.5rem;
+    height: calc(100vh - 80px);
     padding-bottom: 0.5rem;
 }
 
-/* --- Left Column: Catalog --- */
+/* Catalog Section */
 .catalog-section {
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    overflow: hidden; /* Contains the scrollable grid */
-    padding-bottom: 0;
+    overflow: hidden;
 }
 
-.search-header {
+.catalog-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    min-height: 50px;
+}
+
+.catalog-header h2 { margin: 0; font-size: 1.5rem; }
+
+.back-btn {
     background: var(--color-surface);
-    padding: 1rem;
-    border-radius: var(--radius-lg);
     border: 1px solid var(--color-border);
-}
-
-.search-bar {
+    padding: 0.5rem 1rem;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-weight: 600;
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    background: var(--color-background);
-    padding: 0.5rem 1rem;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--color-border); /* Subtle border for input area */
-}
-
-.clean-search-input {
-    border: none;
-    background: transparent;
-    width: 100%;
-    outline: none;
-    font-size: 1rem;
     color: var(--color-text);
 }
 
-.products-grid {
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    padding-right: 0.5rem;
-    flex: 1; /* Take remaining space */
+.back-btn:hover {
+    background: var(--color-background);
 }
 
+/* Grids Table */
+.grid-container {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    overflow-y: auto;
+    padding-right: 0.5rem;
+    align-content: start; /* Don't stretch rows */
+    flex: 1;
+}
+
+/* Category Cards */
+.category-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    aspect-ratio: 1; /* Square */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    padding: 1rem;
+    text-align: center;
+}
+
+.category-card:hover {
+    box-shadow: var(--shadow-md);
+}
+
+.cat-icon-wrapper {
+    width: 60%;
+    height: 60%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.cat-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    transition: transform 0.3s ease;
+}
+
+.category-card:hover .cat-img {
+    transform: scale(1.1);
+}
+
+.cat-name { font-weight: 700; font-size: 0.9rem; margin-top: 0.5rem; line-height: 1.2; }
+.cat-name { font-weight: 700; font-size: 1.1rem; }
+
+/* Product Cards */
 .product-card {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
-    padding: 0.75rem 1rem;
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    /* removed transition and hover transform */
-}
-
-.pagination-controls {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 1rem;
-    padding-top: 0.5rem;
-    border-top: 1px solid var(--color-border);
-    margin-top: auto; /* Push to bottom */
-}
-
-.page-btn {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    padding: 0.25rem 0.75rem;
-    cursor: pointer;
-    font-size: 1rem;
-    color: var(--color-text);
-}
-
-.page-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-} 
-
-/* Removed product-icon style */
-
-.product-info {
-    flex: 1;
-}
-
-.product-name {
-    margin: 0;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--color-text);
-}
-
-.product-code {
-    font-size: 0.8rem;
-    color: var(--color-text-muted);
-}
-
-.product-pricing {
+    aspect-ratio: 1; /* Square */
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
+    justify-content: space-between;
+    padding: 1rem;
+    transition: border-color 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+
+.product-card.card-out-stock {
+    opacity: 0.7;
+    background-color: rgba(200, 200, 200, 0.1);
+    border-color: var(--color-border);
+}
+
+.agotado-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-15deg);
+    background: rgba(220, 38, 38, 0.9);
+    color: white;
+    padding: 0.5rem 1rem;
+    font-weight: 800;
+    font-size: 1.2rem;
+    border-radius: 8px;
+    z-index: 10;
+    border: 2px solid white;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+    pointer-events: none;
+}
+
+.product-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
     gap: 0.5rem;
+    overflow: hidden;
 }
 
-.price {
-    font-weight: 700;
-    color: var(--color-text);
-}
+.prod-name { font-weight: 600; font-size: 1rem; line-height: 1.3; }
+.prod-price { font-weight: 700; font-size: 1.2rem; }
+.prod-stock { font-size: 0.85rem; color: var(--color-text-muted); }
+.prod-stock.out-stock { color: var(--color-danger); }
 
-.qty-stepper {
+.product-actions {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     background: var(--color-background);
     border-radius: var(--radius-md);
-    overflow: hidden;
+    padding: 0.25rem;
+    margin-top: 0.5rem;
     border: 1px solid var(--color-border);
 }
 
-.step-btn {
+.action-btn {
+    width: 32px;
+    height: 32px;
     border: none;
-    background: none;
-    padding: 0.25rem 0.75rem;
-    cursor: pointer;
+    border-radius: 4px;
+    font-size: 1.2rem;
     font-weight: bold;
-    color: var(--color-text-muted);
-    transition: background 0.2s;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
 }
 
-.step-btn:hover:not(:disabled) {
-    background: var(--color-surface-hover);
-    color: var(--color-primary);
-}
+.action-btn.minus { background: var(--color-danger); opacity: 0.8; }
+.action-btn.plus { background: var(--color-success); }
+.action-btn:disabled { opacity: 0.3; cursor: not-allowed; background: var(--color-text-muted); }
+.action-btn:where(:not(:disabled)):hover { opacity: 1; transform: scale(1.05); }
 
-.step-btn:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-}
+.qty-label { font-weight: 700; width: 30px; text-align: center; }
 
-.qty-display {
-    min-width: 30px;
-    text-align: center;
-    font-weight: 600;
-    font-size: 0.9rem;
-}
 
-/* --- Right Column: Cart --- */
+/* Cart Section (Right) */
 .cart-section {
     background: var(--color-surface);
     border-radius: var(--radius-lg);
@@ -417,13 +556,7 @@ const handleCheckout = async (paymentMethod) => {
     align-items: center;
 }
 
-.cart-header h2 {
-    margin: 0;
-    font-size: 1.25rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
+.cart-header h2 { margin: 0; font-size: 1.25rem; }
 
 .badge {
     background: var(--color-success);
@@ -431,108 +564,88 @@ const handleCheckout = async (paymentMethod) => {
     font-size: 0.75rem;
     padding: 0.2rem 0.5rem;
     border-radius: 99px;
+    vertical-align: middle;
 }
 
-.clear-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: var(--color-danger);
-    font-size: 1.2rem;
-    opacity: 0.7;
-    transition: opacity 0.2s;
-}
+.clear-btn { background: none; border: none; cursor: pointer; color: var(--color-danger); font-size: 1.2rem; }
 
-.clear-btn:hover { opacity: 1; }
-
-.cart-items {
-    flex: 1;
-    overflow-y: auto;
-    padding: 1rem;
-}
-
-.empty-cart-msg {
-    text-align: center;
-    color: var(--color-text-muted);
-    margin-top: 3rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
+.cart-items { flex: 1; overflow-y: auto; padding: 1rem; }
 
 .cart-item {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
     padding: 0.75rem 0;
     border-bottom: 1px solid var(--color-border);
 }
-
 .cart-item:last-child { border-bottom: none; }
 
-.item-name {
-    font-weight: 500;
-    font-size: 0.95rem;
-}
+.item-name { font-weight: 600; }
+.item-meta { font-size: 0.85rem; color: var(--color-text-muted); }
+.item-total { font-weight: 700; }
 
-.item-meta {
-    font-size: 0.8rem;
-    color: var(--color-text-muted);
-}
-
-.item-total {
-    font-weight: 600;
-}
+.empty-cart-msg { text-align: center; margin-top: 2rem; color: var(--color-text-muted); }
 
 .cart-footer {
     padding: 1.5rem;
-    background: var(--color-surface); /* or slightly darker */
+    background: var(--color-surface);
     border-top: 1px solid var(--color-border);
 }
 
 .total-row {
     display: flex;
     justify-content: space-between;
-    align-items: center;
     margin-bottom: 1rem;
     font-size: 1.1rem;
     color: var(--color-text-muted);
 }
+.total-amount { font-size: 1.5rem; font-weight: 800; color: var(--color-text); }
 
-.total-amount {
-    font-size: 1.5rem;
-    font-weight: 800;
-    color: var(--color-text);
-}
+.checkout-btn { width: 100%; justify-content: center; font-size: 1rem; padding: 1rem; }
 
-.checkout-btn {
-    width: 100%;
-    justify-content: center;
-    font-weight: 700;
-    font-size: 1rem;
-    padding: 1rem !important;
+.pagination-controls {
     display: flex;
-    align-items: center;
-    gap: 0.5rem;
+    justify-content: center;
+    gap: 1rem;
+    padding: 1rem;
+}
+.page-btn {
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius-md); padding: 0.25rem 0.75rem; cursor: pointer;
 }
 
-/* Response for smaller screens */
+@media (min-width: 1300px) {
+    .grid-container { grid-template-columns: repeat(4, 1fr); }
+}
+
+/* Existing max-width queries */
+@media (max-width: 1100px) {
+    .grid-container { grid-template-columns: repeat(2, 1fr); }
+}
+
 @media (max-width: 900px) {
-    .pos-wrapper {
-        grid-template-columns: 1fr;
-        height: auto;
-        overflow: visible;
-    }
-    
-    .products-grid {
-        max-height: 500px; /* Limit height on mobile so cart is reachable */
-    }
-    
-    .cart-section {
-        position: sticky;
-        bottom: 0;
-        z-index: 100;
-        box-shadow: 0 -4px 10px rgba(0,0,0,0.1);
-    }
+    .pos-wrapper { grid-template-columns: 1fr; overflow-y: auto; height: auto; }
+    .cart-section { order: -1; margin-bottom: 1rem; max-height: 300px; }
+    .grid-container { max-height: 500px; }
+}
+
+.toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* Toast Transitions */
+.toast-enter-active,
+.toast-leave-active {
+  transition: all 0.4s ease;
+}
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translateX(100%); /* Slide out to right */
 }
 </style>

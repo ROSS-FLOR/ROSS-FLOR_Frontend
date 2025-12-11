@@ -5,22 +5,69 @@ import BaseInput from '@/components/BaseInput.vue';
 import BaseButton from '@/components/BaseButton.vue';
 // import ManualSaleModal from '@/components/ManualSaleModal.vue';
 import SaleDetailsModal from '@/components/SaleDetailsModal.vue';
+import DownloadReportModal from '@/components/DownloadReportModal.vue';
+import ErrorModal from '@/components/ErrorModal.vue';
 
 const salesStore = useSalesStore();
 // const showManualSaleModal = ref(false);
 const showDetailsModal = ref(false);
+const showDownloadModal = ref(false);
+const showErrorModal = ref(false);
+const errorMessage = ref('');
 const selectedSale = ref(null);
 
 // Filter states
 const startDate = ref('');
 const endDate = ref('');
+let debounceTimeout = null;
 
 const applyFilters = (page = 0) => {
   const filters = {};
-  if (startDate.value) filters.fechaInicio = startDate.value;
-  if (endDate.value) filters.fechaFin = endDate.value;
+  // If dates are provided, append time to cover the full range
+  if (startDate.value) filters.fechaInicio = `${startDate.value}T00:00:00`;
+  if (endDate.value) filters.fechaFin = `${endDate.value}T23:59:59`;
   
   salesStore.fetchSales(page, filters);
+};
+
+// Validates dates before showing download modal
+const validateAndShowDownload = () => {
+    if (!startDate.value || !endDate.value) {
+        errorMessage.value = 'Para descargar el reporte, por favor seleccione un rango de fechas válido (Desde y Hasta).';
+        showErrorModal.value = true;
+        return;
+    }
+    showDownloadModal.value = true;
+};
+
+// Preset Date Logic
+const setDateRange = (range) => {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    const todayStr = `${yyyy}-${mm}-${dd}`;
+
+    if (range === 'today') {
+        startDate.value = todayStr;
+        endDate.value = todayStr;
+    } else if (range === 'week') {
+        // First day of current week (Monday)
+        const day = today.getDay() || 7; // Get current day number, convert Sun(0) to 7
+        if (day !== 1) today.setHours(-24 * (day - 1));
+        const startYYYY = today.getFullYear();
+        const startMM = String(today.getMonth() + 1).padStart(2, '0');
+        const startDD = String(today.getDate()).padStart(2, '0');
+        
+        startDate.value = `${startYYYY}-${startMM}-${startDD}`;
+        endDate.value = todayStr; // End is today
+    } else if (range === 'month') {
+        startDate.value = `${yyyy}-${mm}-01`;
+        endDate.value = todayStr;
+    } else if (range === 'clear') {
+        startDate.value = '';
+        endDate.value = '';
+    }
 };
 
 watch([startDate, endDate], () => {
@@ -40,11 +87,35 @@ const changePage = (page) => {
   }
 };
 
-const handleDownload = () => {
-    // Requires formats like 2023-01-01T00:00:00. Note: Input type date returns YYYY-MM-DD
-    const start = startDate.value ? startDate.value : null;
-    const end = endDate.value ? endDate.value : null;
-    salesStore.downloadReport(start, end);
+import { generateSalesPdf } from '@/utils/pdfGenerator';
+
+const handleDownloadPdf = async () => {
+    // Append time for backend filtering logic
+    const start = startDate.value ? `${startDate.value}T00:00:00` : null;
+    const end = endDate.value ? `${endDate.value}T23:59:59` : null;
+    
+    try {
+        const filters = {};
+        if (startDate.value) filters.fechaInicio = start;
+        if (endDate.value) filters.fechaFin = end;
+
+        const salesReport = await salesStore.fetchSalesForReport(filters);
+        
+        // Calculate total sum for local calculation
+        const totalSum = salesReport.reduce((acc, sale) => acc + (sale.totalFinal || 0), 0);
+        
+        generateSalesPdf(salesReport, startDate.value, endDate.value, totalSum);
+        showDownloadModal.value = false;
+    } catch (error) {
+        alert('Error al generar el reporte PDF');
+    }
+};
+
+const handleDownloadExcel = () => {
+    const start = startDate.value ? `${startDate.value}T00:00:00` : null;
+    const end = endDate.value ? `${endDate.value}T23:59:59` : null;
+    salesStore.downloadExcel(start, end);
+    showDownloadModal.value = false;
 };
 
 const openDetailsModal = (sale) => {
@@ -58,28 +129,36 @@ const openDetailsModal = (sale) => {
     <div class="top-bar">
       <h1>Historial de Ventas</h1>
       <div class="top-actions">
-        <BaseButton variant="secondary" @click="handleDownload">Descargar PDF</BaseButton>
+        <BaseButton variant="secondary" @click="validateAndShowDownload">Descargar Reporte</BaseButton>
       </div>
     </div>
 
     <div class="filters-bar">
-      <div class="date-filters">
-        <BaseInput 
-          v-model="startDate" 
-          type="datetime-local" 
-          label="Desde"
-          class="date-input"
-        />
-        <BaseInput 
-          v-model="endDate" 
-          type="datetime-local" 
-          label="Hasta"
-          class="date-input"
-        />
+      <div class="date-filters-container">
+          <div class="quick-filters">
+              <button class="chip-btn" @click="setDateRange('today')">Hoy</button>
+              <button class="chip-btn" @click="setDateRange('week')">Esta Semana</button>
+              <button class="chip-btn" @click="setDateRange('month')">Este Mes</button>
+              <button class="chip-btn clear" @click="setDateRange('clear')">Limpiar</button>
+          </div>
+          <div class="date-inputs">
+            <BaseInput 
+              v-model="startDate" 
+              type="date" 
+              label="Desde"
+              class="date-input"
+            />
+            <BaseInput 
+              v-model="endDate" 
+              type="date" 
+              label="Hasta"
+              class="date-input"
+            />
+          </div>
       </div>
       
       <div class="total-summary">
-        <span class="total-label">Vental Totales:</span>
+        <span class="total-label">Ventas Totales:</span>
         <span class="total-amount">S/.{{ salesStore.sales.reduce((acc, sale) => acc + (sale.totalFinal || 0), 0).toFixed(2) }}</span>
       </div>
     </div>
@@ -129,7 +208,18 @@ const openDetailsModal = (sale) => {
     </div>
 
     <!-- <ManualSaleModal :show="showManualSaleModal" @close="showManualSaleModal = false" /> -->
-    <SaleDetailsModal :show="showDetailsModal" :saleId="selectedSale?.id" @close="showDetailsModal = false" />
+    <SaleDetailsModal :show="showDetailsModal" :sale="selectedSale" @close="showDetailsModal = false" />
+    <DownloadReportModal 
+      :show="showDownloadModal" 
+      @close="showDownloadModal = false"
+      @download-pdf="handleDownloadPdf"
+      @download-excel="handleDownloadExcel"
+    />
+    <ErrorModal
+        :show="showErrorModal"
+        :message="errorMessage"
+        @close="showErrorModal = false"
+    />
   </div>
 </template>
 
@@ -155,8 +245,9 @@ const openDetailsModal = (sale) => {
 
 .filters-bar {
   display: flex;
-  gap: 1.5rem;
-  align-items: flex-end;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
   background: var(--color-surface);
   padding: 1rem;
   border-radius: var(--radius-lg);
@@ -164,30 +255,59 @@ const openDetailsModal = (sale) => {
   flex-wrap: wrap;
 }
 
-.filter-input {
-  flex: 1;
-  min-width: 200px;
-  margin-bottom: 0 !important;
+.date-filters-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
 }
 
-.date-filters {
+.quick-filters {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.chip-btn {
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: 20px;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+    color: var(--color-text-muted);
+    transition: all 0.2s;
+}
+
+.chip-btn:hover {
+    background: rgba(255,255,255,0.05);
+    color: var(--color-text);
+    border-color: var(--color-text-muted);
+}
+
+.chip-btn.clear:hover {
+    border-color: var(--color-danger);
+    color: var(--color-danger);
+}
+
+.date-inputs {
   display: flex;
   gap: 1rem;
+  align-items: flex-end;
 }
 
 .date-input {
-  width: 200px;
+  width: 160px;
   margin-bottom: 0 !important;
 }
 
 .total-summary {
-  margin-left: auto;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   padding: 0.5rem 1rem;
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
+  background: rgba(var(--color-primary-rgb), 0.05);
 }
 
 .total-label {
