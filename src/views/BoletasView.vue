@@ -45,8 +45,8 @@ onMounted(() => {
     // Asumiendo que la paginación del backend es lo suficientemente grande o la lógica cambia para obtener por categoría
     // Por ahora, obtenemos por defecto y confiamos en el parámetro de categoría si es necesario, 
     // PERO el requerimiento implica una navegación rápida "estilo app". 
-    // Si usamos filtrado en backend:
-    productsStore.fetchProducts(0, '', ''); 
+    // Solicitamos una cantidad grande para "quitar la paginación" visualmente
+    productsStore.fetchProducts(0, '', '', 2000); 
 });
 
 const displayedProducts = computed(() => {
@@ -59,13 +59,14 @@ const displayedProducts = computed(() => {
 const selectCategory = (category) => {
     selectedCategory.value = category;
     // Obtener productos para esta categoría
-    // Asumimos que el backend maneja la paginación, solicitamos la página 0
-    productsStore.fetchProducts(0, '', category);
+    // Asumimos que el backend maneja la paginación, solicitamos la página 0 con gran tamaño
+    productsStore.fetchProducts(0, '', category, 2000);
 };
 
 const goBackToCategories = () => {
     selectedCategory.value = null;
-    productsStore.fetchProducts(0, '', ''); // Opcional: limpiar filtro o simplemente no mostrar
+    selectedCategory.value = null;
+    productsStore.fetchProducts(0, '', '', 2000); // Opcional: limpiar filtro o simplemente no mostrar
 };
 
 // Ayudante de Lógica del Carrito
@@ -121,11 +122,8 @@ const cartTotal = computed(() => {
 });
 
 // Lógica de Paginación
-const changePage = (page) => {
-    if (page >= 0 && page < productsStore.totalPages) {
-        productsStore.fetchProducts(page, '', selectedCategory.value);
-    }
-};
+// Lógica de Paginación retirada visualmente, pero mantenemos funciones si se necesitaran internamente
+// const changePage = (page) => { ... }
 
 const normalizeStr = (str) => {
     return (str || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
@@ -162,9 +160,9 @@ const handleCheckout = async (paymentMethod) => {
         
         // Actualizar productos y luego verificar stock bajo
         if (selectedCategory.value) {
-            await productsStore.fetchProducts(productsStore.currentPage, '', selectedCategory.value); 
+            await productsStore.fetchProducts(0, '', selectedCategory.value, 2000); 
         } else {
-            await productsStore.fetchProducts();
+            await productsStore.fetchProducts(0, '', '', 2000);
         }
 
         // Verificar stock bajo en items comprados
@@ -271,20 +269,7 @@ const getCategoryIcon = (cat) => {
              </div>
         </div>
 
-        <!-- Pagination (Only for products) -->
-        <div class="pagination-controls" v-if="selectedCategory && productsStore.totalPages > 1">
-             <button 
-                    class="page-btn"
-                    :disabled="productsStore.currentPage === 0"
-                    @click="changePage(productsStore.currentPage - 1)"
-                >◄</button>
-             <span class="page-info">{{ productsStore.currentPage + 1 }} / {{ productsStore.totalPages }}</span>
-             <button 
-                    class="page-btn"
-                    :disabled="productsStore.currentPage >= productsStore.totalPages - 1"
-                    @click="changePage(productsStore.currentPage + 1)"
-                >►</button>
-        </div>
+
 
     </div>
 
@@ -403,7 +388,7 @@ const getCategoryIcon = (cat) => {
 /* Grids Table */
 .grid-container {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 1rem;
     overflow-y: auto;
     padding-right: 0.5rem;
